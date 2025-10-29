@@ -1,0 +1,37 @@
+# Go
+*.so
+*.dylib
+*.a
+*.o
+*.test
+*.out
+go.sum
+
+# Python
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+venv/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache files
+*.cache
+*.vdb
+*.edb
+
+# Build artifacts
+bin/
