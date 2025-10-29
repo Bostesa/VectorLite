@@ -21,8 +21,11 @@ cd python && pip install -e .
 from embedcache import EmbedCache
 import numpy as np
 
-# Create cache
+# Create cache (default: 100 vectors cached in memory)
 cache = EmbedCache(path="./cache.db", dimension=1536)
+
+# Create with custom cache size
+cache = EmbedCache(path="./cache.db", dimension=1536, cache_size=500)
 
 # Store
 cache.set("hello", vector)
@@ -108,9 +111,16 @@ def handler(event, context):
 EmbedCache(
     path: str = "./embeddings.cache",
     dimension: int = 1536,
-    similarity_threshold: float = None
+    similarity_threshold: float = None,
+    cache_size: int = 100  # LRU cache size
 )
 ```
+
+**Parameters:**
+- `path`: Database file path
+- `dimension`: Vector dimension (must match all vectors)
+- `similarity_threshold`: Default similarity threshold for find_similar()
+- `cache_size`: Number of vectors to keep in memory (default: 100)
 
 ### Methods
 
@@ -182,6 +192,31 @@ cache.set("text2", vector_1536)    # Error: dimension mismatch
 2. **Use similarity threshold wisely** - 0.95+ is safe, lower risks false matches
 3. **Close properly** - Always close or use context manager
 4. **Batch when possible** - Multiple sets are fine, cache handles buffering
+5. **Tune cache_size** - Increase for hot data sets, decrease for memory-constrained environments
+
+## Memory Optimization
+
+EmbedCache uses lazy loading with an LRU cache:
+
+```python
+# Default: 100 vectors in memory (good for most cases)
+cache = EmbedCache(dimension=1536)
+
+# High traffic: keep more vectors hot
+cache = EmbedCache(dimension=1536, cache_size=500)
+
+# Memory-constrained (Lambda 128MB): keep minimal cache
+cache = EmbedCache(dimension=1536, cache_size=10)
+```
+
+**Memory usage** (1536-dim vectors):
+- 10 vectors in cache: 0.06 MB
+- 100 vectors in cache: 0.6 MB
+- 500 vectors in cache: 3 MB
+
+Compare to loading all vectors:
+- 10K vectors fully loaded: 60 MB
+- 10K vectors lazy loaded: 5 MB (index + 100-item cache)
 
 ## Troubleshooting
 

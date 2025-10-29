@@ -21,15 +21,33 @@ type DB struct {
 	file      *os.File
 	mmap      []byte
 	header    *Header
-	index     map[uint64]int64 // hash -> offset
+	index     map[uint64]int64 // hash -> offset (lightweight)
+	cache     *LRUCache         // hot vectors only
 	mu        sync.RWMutex
 	dimension uint32
 }
 
+type OpenOptions struct {
+	LazyLoad  bool // Only load index, not vectors
+	CacheSize int  // LRU cache size (default 100)
+}
+
 func Open(path string, dimension uint32) (*DB, error) {
+	return OpenWithOptions(path, dimension, OpenOptions{
+		LazyLoad:  true,
+		CacheSize: 100,
+	})
+}
+
+func OpenWithOptions(path string, dimension uint32, opts OpenOptions) (*DB, error) {
+	if opts.CacheSize == 0 {
+		opts.CacheSize = 100
+	}
+
 	db := &DB{
 		path:      path,
 		index:     make(map[uint64]int64),
+		cache:     NewLRUCache(opts.CacheSize),
 		dimension: dimension,
 	}
 
@@ -185,16 +203,35 @@ func (db *DB) Insert(text string, vector []float32) error {
 }
 
 func (db *DB) Get(text string) ([]float32, error) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
 	hash := HashText(text)
+
+	// Check LRU cache first (no lock needed)
+	if cached, ok := db.cache.Get(hash); ok {
+		return cached, nil
+	}
+
+	// Cache miss - read from mmap
+	db.mu.RLock()
 	offset, exists := db.index[hash]
+	db.mu.RUnlock()
+
 	if !exists {
 		return nil, ErrNotFound
 	}
 
-	return db.readVector(offset)
+	// Read vector from mmap (lock held during read)
+	db.mu.RLock()
+	vector, err := db.readVector(offset)
+	db.mu.RUnlock()
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Add to cache for next time
+	db.cache.Put(hash, vector)
+
+	return vector, nil
 }
 
 func (db *DB) readVector(offset int64) ([]float32, error) {
@@ -221,14 +258,21 @@ func (db *DB) FindSimilar(vector []float32, threshold float32) ([]float32, float
 	}
 
 	db.mu.RLock()
-	defer db.mu.RUnlock()
+	offsets := make([]int64, 0, len(db.index))
+	for _, offset := range db.index {
+		offsets = append(offsets, offset)
+	}
+	db.mu.RUnlock()
 
 	var bestVector []float32
 	var bestScore float32 = -1
 
-	// Yeah, this is O(n). Will add HNSW later
-	for _, offset := range db.index {
+	// O(n) linear scan - will add HNSW in Phase 2
+	for _, offset := range offsets {
+		db.mu.RLock()
 		cached, err := db.readVector(offset)
+		db.mu.RUnlock()
+
 		if err != nil {
 			continue
 		}
@@ -301,10 +345,12 @@ func (db *DB) Stats() map[string]interface{} {
 	stat, _ := db.file.Stat()
 
 	return map[string]interface{}{
-		"records":    len(db.index),
-		"dimension":  db.dimension,
-		"file_size":  stat.Size(),
-		"index_size": len(db.index),
+		"records":     len(db.index),
+		"dimension":   db.dimension,
+		"file_size":   stat.Size(),
+		"index_size":  len(db.index),
+		"cache_size":  db.cache.Len(),
+		"cache_capacity": db.cache.capacity,
 	}
 }
 

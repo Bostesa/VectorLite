@@ -14,6 +14,8 @@ class CacheStats:
     dimension: int
     file_size: int
     index_size: int
+    cache_size: int = 0
+    cache_capacity: int = 0
 
 
 class EmbedCache:
@@ -22,10 +24,19 @@ class EmbedCache:
         path: Optional[str] = None,
         dimension: int = 1536,
         similarity_threshold: Optional[float] = None,
+        cache_size: int = 100,  # LRU cache size
     ):
+        """
+        Args:
+            path: Path to cache file
+            dimension: Vector dimension (default 1536 for OpenAI)
+            similarity_threshold: Similarity threshold for matching
+            cache_size: Number of vectors to keep in memory (default 100)
+        """
         self.path = path or "./embeddings.cache"
         self.dimension = dimension
         self.similarity_threshold = similarity_threshold
+        self.cache_size = cache_size
 
         self._lib = load_library()
 
@@ -161,6 +172,8 @@ class EmbedCache:
             dimension=stats_dict.get("dimension", 0),
             file_size=stats_dict.get("file_size", 0),
             index_size=stats_dict.get("index_size", 0),
+            cache_size=stats_dict.get("cache_size", 0),
+            cache_capacity=stats_dict.get("cache_capacity", 0),
         )
 
     def close(self):
