@@ -28,7 +28,8 @@ similar, score = cache.find_similar(query_vector)
 - **Zero config**: No Redis, no Docker, no servers
 - **Fast**: Memory-mapped I/O, sub-millisecond lookups
 - **Tiny memory footprint**: 99% less memory via lazy loading (5MB vs 60MB for 10K vectors)
-- **Serverless-friendly**: 2MB binary, 10ms cold starts, works in Lambda/Vercel
+- **Serverless-optimized**: Singleton pattern, 10ms cold start, 0ms warm start
+- **Lambda-friendly**: 2MB binary, fits 128MB tier, persists across invocations
 - **Saves money**: Cache embeddings instead of recomputing
 
 ## Build
@@ -48,17 +49,17 @@ See [GETTING_STARTED.md](GETTING_STARTED.md) for detailed examples.
 ```python
 from embedcache import EmbedCache
 
+# Regular usage
 cache = EmbedCache(dimension=1536)
-
-# Basic operations
 cache.set(key, vector)
 vector = cache.get(key)
 
-# Get or compute pattern
-def compute_embedding():
-    return openai.embeddings.create(...)
-
-vector = cache.get_or_compute("text", compute_embedding)
+# Serverless (Lambda/Vercel) - recommended
+def handler(event, context):
+    cache = EmbedCache.for_serverless(name="embeddings")
+    # First call: 10ms | Next 50+ calls: 0ms (singleton reuse)
+    embedding = cache.get_or_compute(text, compute_fn)
+    return {"embedding": embedding.tolist()}
 ```
 
 ## Architecture

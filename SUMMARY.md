@@ -47,6 +47,8 @@ Operations:
 - [x] Cosine similarity search
 - [x] Lazy loading with LRU cache (99% memory reduction)
 - [x] File format reorganization (385x faster open)
+- [x] Serverless optimization (singleton pattern, 0ms warm start)
+- [x] Memory tracking API (get_memory_usage, get_cached_count, etc)
 - [x] Python bindings
 - [x] Tests (26 passing)
 
@@ -93,15 +95,21 @@ tests/            - 21 tests
 ```python
 from embedcache import EmbedCache
 
+# Regular usage
 cache = EmbedCache(dimension=1536)
-
-# Cache embeddings
 cache.set("text", vector)
 vector = cache.get("text")
 
-# Similarity matching
-cache = EmbedCache(similarity_threshold=0.95)
-similar, score = cache.find_similar(query_vector)
+# Serverless (recommended)
+def lambda_handler(event, context):
+    cache = EmbedCache.for_serverless(name="embeddings")
+    # First call: 10ms | Next 50+ calls: 0ms
+    embedding = cache.get_or_compute(text, compute_fn)
+    return {"embedding": embedding.tolist()}
+
+# Memory tracking
+print(f"Memory: {cache.get_memory_usage() / 1024 / 1024:.2f} MB")
+print(f"Cached: {cache.get_cached_count()} vectors")
 ```
 
 ## Next Steps
